@@ -23,6 +23,11 @@ requests==2.32.3             # HTTP requests
 # ── UI ─────────────────────────────────────────────────────────────────────
 streamlit==1.37.0            # Chat UI (has native st.chat_message — no streamlit-chat needed)
 
+# ── API server (production interface for React/Next.js frontend) ────────────
+fastapi==0.111.1             # REST API framework
+uvicorn[standard]==0.30.1    # ASGI server for FastAPI
+python-multipart==0.0.9      # Required for FastAPI file upload (UploadFile)
+
 # ── Data & utilities ───────────────────────────────────────────────────────
 pandas==2.2.2
 numpy==1.26.4

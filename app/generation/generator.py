@@ -1,6 +1,6 @@
 from typing import Dict, Any
 from app.generation.llm import OllamaLLM
-from app.generation.prompts import SYSTEM_PROMPT, build_user_message, NO_CONTEXT_RESPONSE
+from app.generation.prompts import SYSTEM_PROMPT, build_user_message, NO_CONTEXT_RESPONSE, sanitize_query
 from app.retrieval.context import ContextAssembler
 from app.config import SIMILARITY_THRESHOLD, TOP_K_FINAL
 from loguru import logger
@@ -42,6 +42,14 @@ class AnswerGenerator:
 
         Step 4 — Extract sources: deduplicate source names from all used chunks.
         """
+        query = sanitize_query(query)
+        if not query:
+            return {
+                "answer": "Please enter a question.",
+                "sources": [], "confidence": 0.0, "confident": False,
+                "collections_searched": [], "chunks_used": 0, "chunks": [],
+            }
+
         logger.info(f"Query: {query[:80]}")
 
         # ── Step 1: Retrieve ──────────────────────────────────────────────
