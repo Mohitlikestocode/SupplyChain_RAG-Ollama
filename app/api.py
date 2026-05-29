@@ -22,6 +22,8 @@ from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.generation.generator import AnswerGenerator
@@ -38,19 +40,32 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS — allow the React/Next.js dev server and production domain
-# Update origins before deploying to production
+# CORS — allow all local dev origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",   # Next.js / Create React App dev server
+        "http://localhost:8000",   # FastAPI self (frontend served here)
+        "http://localhost:3000",   # Next.js / Create React App
         "http://localhost:5173",   # Vite dev server
-        "http://localhost:8501",   # Streamlit (kept for dev)
+        "http://localhost:8501",   # Streamlit
+        "http://127.0.0.1:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Serve the React frontend as static files ──────────────────────────────────
+_frontend_dir = Path(__file__).parent.parent / "frontend"
+if _frontend_dir.exists():
+    app.mount("/ui", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")
+
+@app.get("/", include_in_schema=False)
+async def root():
+    """Redirect / → /ui/ so opening localhost:8000 shows the UI."""
+    if _frontend_dir.exists():
+        return RedirectResponse(url="/ui/index.html")
+    return {"message": "Cleo Supply Chain Intelligence API", "docs": "/docs"}
 
 # ── Singletons — loaded once at startup ──────────────────────────────────────
 _generator: Optional[AnswerGenerator] = None
