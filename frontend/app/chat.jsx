@@ -8,63 +8,95 @@ function confColor(c) {
   return "#DC2626";
 }
 
-/* Light markdown: **bold** + bullet lines + paragraphs */
+/* Markdown renderer: bold, italic, code, bullets, numbered lists, headers */
 function renderRich(text) {
   const blocks = text.split("\n");
   const out = [];
   let list = null;
-  const flush = () => { if (list) { out.push(React.createElement("ul", { key: "ul" + out.length, className: "md-list" }, list)); list = null; } };
+  let listType = null;
+
+  const flush = () => {
+    if (list) {
+      out.push(React.createElement(listType, { key: "list" + out.length, className: "md-list" }, list));
+      list = null; listType = null;
+    }
+  };
+
   blocks.forEach((line, i) => {
     const t = line.trim();
-    if (t.startsWith("•")) {
-      (list = list || []).push(<li key={i} dangerouslySetInnerHTML={{ __html: inline(t.slice(1).trim()) }} />);
-    } else if (t === "") {
-      flush();
-    } else {
-      flush();
-      out.push(<p key={i} className="md-p" dangerouslySetInnerHTML={{ __html: inline(t) }} />);
+    if (!t) { flush(); return; }
+
+    // Headers
+    if (t.startsWith("### ")) { flush(); out.push(<h4 key={i} className="md-h4" dangerouslySetInnerHTML={{ __html: inline(t.slice(4)) }} />); return; }
+    if (t.startsWith("## "))  { flush(); out.push(<h3 key={i} className="md-h3" dangerouslySetInnerHTML={{ __html: inline(t.slice(3)) }} />); return; }
+    if (t.startsWith("# "))   { flush(); out.push(<h2 key={i} className="md-h2" dangerouslySetInnerHTML={{ __html: inline(t.slice(2)) }} />); return; }
+
+    // Bullet lists (•, -, *)
+    const bulletMatch = t.match(/^([•\-\*]) (.+)/);
+    if (bulletMatch) {
+      if (listType !== "ul") { flush(); listType = "ul"; }
+      (list = list || []).push(<li key={i} dangerouslySetInnerHTML={{ __html: inline(bulletMatch[2]) }} />);
+      return;
     }
+
+    // Numbered lists
+    const numMatch = t.match(/^(\d+)\. (.+)/);
+    if (numMatch) {
+      if (listType !== "ol") { flush(); listType = "ol"; }
+      (list = list || []).push(<li key={i} dangerouslySetInnerHTML={{ __html: inline(numMatch[2]) }} />);
+      return;
+    }
+
+    flush();
+    out.push(<p key={i} className="md-p" dangerouslySetInnerHTML={{ __html: inline(t) }} />);
   });
   flush();
   return out;
 }
+
 function inline(s) {
   return s
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/`(.+?)`/g, '<code>$1</code>');
+    .replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>")
+    .replace(/\*\*(.+?)\*\*/g,     "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g,         "<em>$1</em>")
+    .replace(/`(.+?)`/g,           '<code>$1</code>');
 }
 
 function UserMsg({ text }) {
   return <div className="msg-row user"><div className="bubble-user">{text}</div></div>;
 }
 
-function MetaRow({ m }) {
+function MetaRow({ m, onShowSources }) {
+  const hasSources = m.sources && m.sources.length > 0;
   return (
     <div className="meta-row">
       <span className="meta-conf"><span className="meta-dot" style={{ background: confColor(m.confidence) }} />{Math.round(m.confidence * 100)}% confidence</span>
-      <span className="meta-sep">·</span>
-      <span>Sources: <b>{m.sources.join(", ")}</b></span>
-      <span className="meta-sep">·</span>
-      <span>Collections: {m.collections.join(", ")}</span>
-      <span className="meta-sep">·</span>
-      <span>{m.chunksUsed} chunks</span>
+      {hasSources && (
+        <>
+          <span className="meta-sep">·</span>
+          <button className="source-btn" onClick={() => onShowSources && onShowSources()} title="Check sources">Show sources</button>
+        </>
+      )}
+      {m.collections && m.collections.length > 0 && (
+        <>
+          <span className="meta-sep">·</span>
+          <span>{m.collections.join(", ")}</span>
+        </>
+      )}
     </div>
   );
 }
 
-function AssistantMsg({ m, streaming }) {
+function AssistantMsg({ m, streaming, onShowSources }) {
   return (
     <div className="msg-row assistant">
-      <div className="assistant-avatar">C</div>
+      <img className="assistant-avatar-image" src="assets/robo.png" alt="Assistant" />
       <div className="assistant-col">
         <div className={"bubble-assistant" + (m.noMatch ? " nomatch" : "")}>
-          {m.noMatch && (
-            <div className="nomatch-banner">⚠ No relevant documents found in the knowledge base.</div>
-          )}
           <div className="md">{renderRich(m.text)}{streaming && <span className="caret" />}</div>
         </div>
-        {!streaming && m.confidence !== undefined && m.text && <MetaRow m={m} />}
+        {!streaming && m.confidence !== undefined && m.text && <MetaRow m={m} onShowSources={onShowSources} />}
       </div>
     </div>
   );
@@ -73,7 +105,7 @@ function AssistantMsg({ m, streaming }) {
 function TypingDots() {
   return (
     <div className="msg-row assistant">
-      <div className="assistant-avatar">C</div>
+      <img className="assistant-avatar-image" src="assets/robo.png" alt="Assistant" />
       <div className="bubble-assistant typing"><span className="dot" /><span className="dot" /><span className="dot" /></div>
     </div>
   );
@@ -124,7 +156,7 @@ function InputBar({ value, onChange, onSend, disabled }) {
   );
 }
 
-function ChatArea({ data, messages, typing, streamId, input, setInput, onSend, onPick }) {
+function ChatArea({ data, messages, typing, streamId, input, setInput, onSend, onPick, onShowSources }) {
   const scroller = useRef(null);
   useEffect(() => {
     const el = scroller.current; if (el) el.scrollTop = el.scrollHeight;
@@ -141,7 +173,7 @@ function ChatArea({ data, messages, typing, streamId, input, setInput, onSend, o
             {messages.map((m) =>
               m.role === "user"
                 ? <UserMsg key={m.id} text={m.text} />
-                : <AssistantMsg key={m.id} m={m} streaming={m.id === streamId} />
+                : <AssistantMsg key={m.id} m={m} streaming={m.id === streamId} onShowSources={onShowSources} />
             )}
             {typing && <TypingDots />}
           </div>

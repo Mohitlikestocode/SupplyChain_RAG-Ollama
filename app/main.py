@@ -187,7 +187,11 @@ if query:
     # Generate answer
     with st.chat_message("assistant"):
         with st.spinner("Searching knowledge base and generating answer..."):
-            result = get_generator().answer(query)
+            history = [
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state.chat_history[:-1]
+                ]
+            result = get_generator().answer(query, history=history)
 
         answer   = result["answer"]
         confident = result["confident"]

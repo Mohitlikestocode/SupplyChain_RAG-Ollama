@@ -6,6 +6,8 @@ from app.ingestion.loaders import DocumentLoader
 from app.ingestion.chunker import SemanticChunker
 from app.ingestion.embedder import Embedder
 from app.database.chroma import ChromaClient
+from app.database import sqlite as sql_db
+from app.ingestion.edi_parser import parse_edi
 from app.retrieval.sparse import BM25Index
 from app.config import COLLECTIONS
 
@@ -83,7 +85,29 @@ class IngestionPipeline:
             for doc in docs:
                 doc["metadata"].update(extra_metadata)
 
+        # Simple EDI detection: if the loaded document text looks like an
+        # EDI interchange (contains common EDI segment tags), mark metadata
+        # so the rest of the pipeline and retrieval can prioritize EDI.
+        try:
+            edi_keywords = ("ISA", "GS", "ST", "BEG", "ISA*")
+            edi_detected = any(any(k in (doc.get("text") or "") for k in edi_keywords) for doc in docs)
+            if edi_detected:
+                for doc in docs:
+                    doc["metadata"]["edi"] = True
+        except Exception:
+            # non-fatal — detection is best-effort
+            pass
+
         logger.info(f"  Loaded {len(docs)} document section(s)")
+
+        # Register the uploaded document in our lightweight document DB so
+        # we can build relations across EDI lifecycle documents.
+        try:
+            doc_record = sql_db.add_document(source, collection_name, metadata=extra_metadata or {})
+            doc_id = doc_record["id"]
+        except Exception as e:
+            logger.warning(f"Failed to register document metadata: {e}")
+            doc_id = None
 
         # ── Step 2: Chunk ─────────────────────────────────────────────────
         try:
@@ -99,6 +123,53 @@ class IngestionPipeline:
                     "error": "No chunks produced after chunking"}
 
         logger.info(f"  Chunked into {len(chunks)} semantic chunks")
+
+        # Run EDI parser on each loaded doc and register identifiers + relations
+        try:
+            for doc in docs:
+                text = doc.get('text') or ''
+                parsed = parse_edi(text)
+                if doc_id:
+                    # store identifiers for this document
+                    for po in parsed.get('po_numbers', []):
+                        try:
+                            sql_db.add_doc_identifier(doc_id, 'po', po)
+                        except Exception:
+                            pass
+                    for inv in parsed.get('invoice_numbers', []):
+                        try:
+                            sql_db.add_doc_identifier(doc_id, 'invoice', inv)
+                        except Exception:
+                            pass
+                    for st in parsed.get('st', []):
+                        sid = st.get('control') or st.get('set_id')
+                        if sid:
+                            try:
+                                sql_db.add_doc_identifier(doc_id, 'st', sid)
+                            except Exception:
+                                pass
+                # Attempt to link to existing docs by identifiers (simple relation edges)
+                # e.g., if this doc has an invoice number that matches an earlier PO doc,
+                # create a relation from PO -> INVOICE (or vice versa) depending on types.
+                try:
+                    for po in parsed.get('po_numbers', []):
+                        matches = sql_db.find_docs_by_identifier('po', po)
+                        for m in matches:
+                            if doc_id and m != doc_id:
+                                # link existing doc -> this doc as 'related_po'
+                                sql_db.add_doc_relation(m, doc_id, 'related_po')
+                except Exception:
+                    pass
+                try:
+                    for inv in parsed.get('invoice_numbers', []):
+                        matches = sql_db.find_docs_by_identifier('invoice', inv)
+                        for m in matches:
+                            if doc_id and m != doc_id:
+                                sql_db.add_doc_relation(m, doc_id, 'related_invoice')
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"EDI parsing/relations failed: {e}")
 
         # ── Step 3: Embed + store in ChromaDB ────────────────────────────
         texts = [c["text"] for c in chunks]

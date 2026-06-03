@@ -73,5 +73,60 @@
     return await res.json();
   }
 
-  window.CleoAPI = { queryAPI, ingestFile, getStats, getHealth };
+  /* ── Chat session endpoints ─────────────────────────────────────────── */
+
+  async function createChat() {
+    const res = await fetch(API_BASE + "/api/chats", { method: "POST" });
+    if (!res.ok) throw new Error("Failed to create chat");
+    return await res.json();
+  }
+
+  async function listChats() {
+    const res = await fetch(API_BASE + "/api/chats");
+    if (!res.ok) throw new Error("Failed to list chats");
+    return await res.json();
+  }
+
+  async function deleteChat(chatId) {
+    const res = await fetch(API_BASE + "/api/chats/" + chatId, { method: "DELETE" });
+    if (!res.ok) throw new Error("Failed to delete chat");
+    return await res.json();
+  }
+
+  async function getChatMessages(chatId) {
+    const res = await fetch(API_BASE + "/api/chats/" + chatId + "/messages");
+    if (!res.ok) throw new Error("Failed to get messages");
+    return await res.json(); // { chat, messages }
+  }
+
+  /* POST /api/chats/{id}/messages — RAG query with conversation memory */
+  async function sendChatMessage(chatId, question) {
+    const res = await fetch(API_BASE + "/api/chats/" + chatId + "/messages", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ query: question }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Message failed (" + res.status + ")");
+    }
+    const d = await res.json();
+    const mappedChunks = (d.chunks || []).map(mapChunk);
+    return {
+      text:            d.answer,
+      confidence:      d.confidence,
+      noMatch:         !d.confident,
+      sources:         d.sources || [],
+      collections:     d.collections_searched || [],
+      chunksUsed:      d.chunks_used || 0,
+      chunksRetrieved: mappedChunks.length,
+      chunks:          mappedChunks,
+      time:            null,
+    };
+  }
+
+  window.CleoAPI = {
+    queryAPI, ingestFile, getStats, getHealth,
+    createChat, listChats, deleteChat, getChatMessages, sendChatMessage,
+  };
 })();

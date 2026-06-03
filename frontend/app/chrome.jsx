@@ -20,7 +20,7 @@ function TopNav({ online, onMenu }) {
           <span className="model-name">phi3:mini</span>
         </div>
         <button className="icon-btn" aria-label="Settings"><Ic.Gear size={18} /></button>
-        <div className="avatar">MK</div>
+        <img className="avatar-image" src="assets/robo.png" alt="Assistant" />
       </div>
     </header>
   );
@@ -47,18 +47,26 @@ function CollectionRow({ c, max }) {
   );
 }
 
-function Sidebar({ data, onNewChat, onUpload, onPickSuggestion }) {
+function formatChatTime(isoStr) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr + (isoStr.endsWith("Z") ? "" : "Z"));
+  const now = new Date();
+  const diff = (now - d) / 1000;
+  if (diff < 60)     return "Just now";
+  if (diff < 3600)   return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400)  return Math.floor(diff / 3600) + "h ago";
+  if (diff < 172800) return "Yesterday";
+  return d.toLocaleDateString();
+}
+
+function Sidebar({ data, chats, currentChatId, onNewChat, onOpenChat, onDeleteChat, onUpload }) {
   const Ic = window.Icons;
   const [uploadCol, setUploadCol] = useState("edi_standards");
   const [dragging,  setDragging]  = useState(false);
   const max = Math.max(...data.COLLECTIONS.map((c) => c.chunks), 1);
 
   const colObj = () => data.COLLECTIONS.find((c) => c.id === uploadCol) || data.COLLECTIONS[0];
-
-  /* Click on dropzone → trigger file picker via hidden input in App */
   const handleClick = () => onUpload(colObj(), null);
-
-  /* Drag-and-drop → pass real File object */
   const handleDrop = (e) => {
     e.preventDefault();
     setDragging(false);
@@ -72,6 +80,34 @@ function Sidebar({ data, onNewChat, onUpload, onPickSuggestion }) {
         <button className="new-chat-btn" onClick={onNewChat}>
           <Ic.Plus size={16} /> New Conversation
         </button>
+
+        <section className="side-section">
+          <div className="side-label">Recent Conversations</div>
+          <div className="recent-list">
+            {chats.length === 0 ? (
+              <div className="recent-empty">No conversations yet</div>
+            ) : chats.map((c) => (
+              <div
+                key={c.id}
+                className={"recent-item" + (c.id === currentChatId ? " active" : "")}
+              >
+                <button
+                  className="recent-item-btn"
+                  onClick={() => onOpenChat(c.id)}
+                >
+                  <span className="recent-title">{c.title}</span>
+                  <span className="recent-time">{formatChatTime(c.updated_at)}</span>
+                </button>
+                <button
+                  className="recent-delete"
+                  onClick={(e) => { e.stopPropagation(); onDeleteChat(c.id); }}
+                  aria-label="Delete chat"
+                  title="Delete"
+                >×</button>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section className="side-section">
           <div className="side-label">Knowledge Base</div>
@@ -98,22 +134,6 @@ function Sidebar({ data, onNewChat, onUpload, onPickSuggestion }) {
               {data.COLLECTIONS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
-        </section>
-
-        <section className="side-section">
-          <div className="side-label">Recent</div>
-          <div className="recent-list">
-            {data.RECENT.map((r) => (
-              <button
-                key={r.id}
-                className={"recent-item" + (r.active ? " active" : "")}
-                onClick={() => onPickSuggestion(r.title)}
-              >
-                <span className="recent-title">{r.title}</span>
-                <span className="recent-time">{r.time}</span>
-              </button>
-            ))}
-          </div>
         </section>
       </div>
     </aside>

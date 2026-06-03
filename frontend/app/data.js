@@ -13,14 +13,7 @@
     { id: "uploaded_documents",    name: "Uploads",             color: "#6B7280", chunks: 0 },
   ];
 
-  const RECENT = [
-    { id: "c1", title: "What does AK5*R mean in a 997 acknowledgment?", time: "2m ago", active: true },
-    { id: "c2", title: "856 ASN hierarchical loop structure explained",  time: "1h ago" },
-    { id: "c3", title: "AS2 vs SFTP — which transport for retail EDI?",  time: "Yesterday" },
-    { id: "c4", title: "GS segment functional group control numbers",     time: "Yesterday" },
-    { id: "c5", title: "How to map an 850 PO into an inbound order",     time: "2 days ago" },
-    { id: "c6", title: "Walmart compliance: 810 invoice requirements",    time: "3 days ago" },
-  ];
+  const RECENT = []; // populated at runtime from GET /api/chats
 
   const SUGGESTIONS = [
     "What does AK5*R mean in a 997 acknowledgment?",
